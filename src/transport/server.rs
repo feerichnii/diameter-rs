@@ -1,19 +1,43 @@
 //! Diameter Protocol Server
 use crate::diameter::DiameterMessage;
 use crate::dictionary::Dictionary;
-use crate::error::Result;
+use crate::error::{Error, Result};
+use crate::transport::connection::{apply_socket_opts, SocketOpts};
 use crate::transport::Codec;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpSocket};
 
 /// Configuration for the Diameter server.
 ///
 pub struct DiameterServerConfig {
     pub native_tls: Option<native_tls::Identity>,
+}
+
+/// Listener socket options (applied before `bind()`).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ServerSocketConfig {
+    pub reuse_addr: bool,
+    pub reuse_port: bool,
+}
+
+impl ServerSocketConfig {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn reuse_addr(mut self, enabled: bool) -> Self {
+        self.reuse_addr = enabled;
+        self
+    }
+
+    pub fn reuse_port(mut self, enabled: bool) -> Self {
+        self.reuse_port = enabled;
+        self
+    }
 }
 
 /// A Diameter protocol server for handling Diameter requests and responses.
@@ -37,6 +61,41 @@ impl DiameterServer {
     pub async fn new(addr: &str, config: DiameterServerConfig) -> Result<DiameterServer> {
         let listener = TcpListener::bind(addr).await?;
         Ok(DiameterServer { listener, config })
+    }
+
+    /// Like [`new`](Self::new), but applies [`ServerSocketConfig`] before `bind()`.
+    ///
+    /// On Linux, `reuse_port` allows a listener to coexist with outgoing sockets that
+    /// share the same local `IP:port` (topology A). This does **not** integrate inbound
+    /// peer TCP connections into `DiameterPeerClient` (topology B).
+    pub async fn new_with_socket_config(
+        addr: &str,
+        config: DiameterServerConfig,
+        socket_config: ServerSocketConfig,
+    ) -> Result<DiameterServer> {
+        let addr: SocketAddr = addr
+            .parse()
+            .map_err(|e| Error::ServerError(format!("Invalid listen address {}: {}", addr, e)))?;
+        let socket = if addr.is_ipv4() {
+            TcpSocket::new_v4()?
+        } else {
+            TcpSocket::new_v6()?
+        };
+        apply_socket_opts(
+            &socket,
+            SocketOpts {
+                reuse_addr: socket_config.reuse_addr,
+                reuse_port: socket_config.reuse_port,
+            },
+        )?;
+        socket.bind(addr)?;
+        let listener = socket.listen(1024)?;
+        Ok(DiameterServer { listener, config })
+    }
+
+    /// Local address of the listening socket.
+    pub fn local_addr(&self) -> Result<SocketAddr> {
+        Ok(self.listener.local_addr()?)
     }
 
     /// Listens for incoming connections and processes Diameter messages.

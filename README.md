@@ -157,6 +157,56 @@ async fn main() {
 ```
 
 
+### Multi-peer Client (Active/Active)
+
+`DiameterPeerClient` holds several peer connections in one object. Outgoing Requests go via `send_to(peer, …)` or policy `send(…)` (`Failover` / `RoundRobin`). Peer-initiated Requests on those same TCP connections are delivered through `take_incoming_requests()`, and `IncomingRequest::respond()` answers on the **originating** connection.
+
+```rust
+use diameter::transport::{
+    DiameterPeerClient, PeerClientConfig, PeerConfig, PeerSelection,
+};
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+let local: SocketAddr = "10.0.0.5:3868".parse().unwrap();
+let client = DiameterPeerClient::new(
+    Arc::clone(&dict),
+    PeerClientConfig::new()
+        .local_addr(local) // shared source IP:port (Linux); omit for ephemeral ports
+        .selection(PeerSelection::Failover),
+).unwrap();
+
+let mut inbound = client.take_incoming_requests().unwrap();
+client.add_peer(PeerConfig::new("a", "10.0.0.10:3868")).unwrap();
+client.add_peer(PeerConfig::new("b", "10.0.0.20:3868")).unwrap();
+client.connect_all().await;
+
+// Both peers answering our requests:
+let fut = client.send_to("a", ccr).await.unwrap();
+let cca = fut.await.unwrap();
+
+// Both peers sending their own Requests (RAR/ASR/…; DWR is answered
+// automatically by the reader and never reaches this queue):
+tokio::spawn(async move {
+    while let Some(req) = inbound.recv().await {
+        // build answer, then:
+        // req.respond(answer).await.unwrap();
+        let _ = req;
+    }
+});
+```
+
+See `examples/multi_peer_client.rs`.
+
+**Notes**
+
+- Legacy `DiameterClient` / `DiameterServer` configs are unchanged (one connection / classic listener).
+- Shared `local_addr` requires a concrete IP and nonzero port; reuse options default on when it is set (Linux `SO_REUSEADDR` / `SO_REUSEPORT`).
+- `send()` picks **one** connected peer — it is not a broadcast. Session affinity (CCR-I/U/T) is the application's responsibility when using RoundRobin.
+- Reconnecting to the same remote from the same local port may fail during TCP `TIME_WAIT`.
+- Watchdog is link-local: an incoming DWR is answered with DWA automatically, strictly on the connection it arrived on (set `origin_host` / `origin_realm` in `PeerClientConfig` so the DWA carries proper identity). It is never delivered to the inbound Request queue.
+- This layer is still not a full RFC 6733 peer state machine: CER/CEA and DPR/DPA are not automatic (incoming DPR can be answered via the inbound Request API), and the client does not yet send its own DWRs. Do not treat Active/Active as production-ready without those exchanges.
+
 ## TLS
 
 Below are examples of how to set up TLS for both the server and the client.

@@ -185,9 +185,24 @@ impl DiameterMessage {
         self.header.hop_by_hop_id
     }
 
+    /// Sets the Hop-by-Hop Identifier in the message header.
+    pub(crate) fn set_hop_by_hop_id(&mut self, id: u32) {
+        self.header.hop_by_hop_id = id;
+    }
+
     /// Retrieves the End-to-End Identifier from the message header.
     pub fn get_end_to_end_id(&self) -> u32 {
         self.header.end_to_end_id
+    }
+
+    /// Sets the End-to-End Identifier in the message header.
+    pub(crate) fn set_end_to_end_id(&mut self, id: u32) {
+        self.header.end_to_end_id = id;
+    }
+
+    /// Sets the command flags in the message header.
+    pub(crate) fn set_flags(&mut self, flags: u8) {
+        self.header.flags = flags;
     }
 
     /// Decodes a Diameter message from the given byte slice.
