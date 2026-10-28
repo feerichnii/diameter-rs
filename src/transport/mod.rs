@@ -1,13 +1,24 @@
 //! Diameter Protocol Transport
 
 pub mod client;
+pub mod connection;
+pub mod peer_client;
 pub mod server;
 
 use crate::dictionary::Dictionary;
 pub use crate::transport::client::DiameterClient;
 pub use crate::transport::client::DiameterClientConfig;
+pub use crate::transport::connection::ConnectionConfig;
+pub use crate::transport::connection::SocketOpts;
+pub use crate::transport::peer_client::DiameterPeerClient;
+pub use crate::transport::peer_client::IncomingRequest;
+pub use crate::transport::peer_client::PeerClientConfig;
+pub use crate::transport::peer_client::PeerConfig;
+pub use crate::transport::peer_client::PeerResponseFuture;
+pub use crate::transport::peer_client::PeerSelection;
 pub use crate::transport::server::DiameterServer;
 pub use crate::transport::server::DiameterServerConfig;
+pub use crate::transport::server::ServerSocketConfig;
 
 use crate::diameter::DiameterMessage;
 use crate::error::{Error, Result};

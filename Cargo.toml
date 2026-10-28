@@ -27,3 +27,7 @@ env_logger = "0.9"
 [[bench]]
 name = "diameter_bench"
 path = "benches/diameter_bench.rs"
+
+[[example]]
+name = "multi_peer_client"
+path = "examples/multi_peer_client.rs"
